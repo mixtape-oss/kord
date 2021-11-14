@@ -31,7 +31,7 @@ internal class VoiceUpdateEventHandler(
 
     override suspend fun start() = coroutineScope {
         on<DiscordVoiceState> { event ->
-            if (event.userId != connection.data.selfId || event.isRelatedToConnection(connection)) return@on
+            if (event.userId != connection.data.selfId || !event.isRelatedToConnection(connection)) return@on
 
             // we're not in a voice channel anymore. anything might've happened
             // discord doesn't tell us whether the channel was deleted or if we were just moved
