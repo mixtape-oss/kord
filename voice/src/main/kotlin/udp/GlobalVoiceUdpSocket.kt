@@ -21,7 +21,8 @@ private val globalVoiceSocketLogger = KotlinLogging.logger { }
  */
 @KordVoice
 object GlobalVoiceUdpSocket : VoiceUdpSocket {
-    private val socketScope = CoroutineScope(Dispatchers.Default + SupervisorJob() + CoroutineName("kord-voice-global-socket"))
+    private val socketScope =
+        CoroutineScope(Dispatchers.Default + SupervisorJob() + CoroutineName("kord-voice-global-socket"))
 
     private val _incoming: MutableSharedFlow<Datagram> = MutableSharedFlow()
     override val incoming: SharedFlow<Datagram> = _incoming
@@ -57,7 +58,8 @@ object GlobalVoiceUdpSocket : VoiceUdpSocket {
         socket.send(packet)
     }
 
-    override suspend fun stop() { /* this doesn't stop until the end of the process */ }
+    override suspend fun stop() { /* this doesn't stop until the end of the process */
+    }
 
     private fun packet(address: NetworkAddress, builder: BytePacketBuilder.() -> Unit): Datagram {
         return Datagram(buildPacket(block = builder), address)

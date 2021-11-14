@@ -2,6 +2,7 @@ package dev.kord.voice
 
 import dev.kord.common.annotation.KordVoice
 import dev.kord.common.entity.Snowflake
+import dev.kord.voice.encryption.strategies.NonceStrategy
 import dev.kord.voice.gateway.DefaultVoiceGatewayBuilder
 import dev.kord.voice.gateway.VoiceGateway
 import dev.kord.voice.gateway.VoiceGatewayConfiguration
@@ -35,15 +36,16 @@ data class VoiceContext(
  * @param gatewayBridge the [GatewayBridge] that handles events for the guild this [VoiceConnection] represents.
  * @param data the data representing this [VoiceConnection].
  * @param audioProvider a [AudioProvider] that will provide [AudioFrame] when required.
- * @param frameInterceptorFactory a factory for [FrameInterceptor]s that is used whenever audio is ready to be sent. See [FrameInterceptor] and [DefaultFrameInterceptor].
+ * @param frameInterceptor a factory for [FrameInterceptor]s that is used whenever audio is ready to be sent. See [FrameInterceptor] and [DefaultFrameInterceptor].
  * @param framePollerFactory A factory for [AudioFramePoller]s that's used to send frames to the voice server. See [AudioFramePoller] and [dev.kord.voice.udp.DefaultAudioFramePoller].
  */
 @KordVoice
 class DefaultVoiceConnection(
     override val data: VoiceConnectionData,
     override val audioProvider: AudioProvider,
-    override val frameInterceptorFactory: (FrameInterceptorContext) -> FrameInterceptor,
-    private val gatewayBridge: GatewayBridge,
+    override val frameInterceptor: FrameInterceptor,
+    override val gatewayBridge: GatewayBridge,
+    override val nonceStrategy: NonceStrategy,
     streamsFactory: StreamsFactory,
     udpSocket: VoiceUdpSocket?,
     voiceGatewayBuilder: DefaultVoiceGatewayBuilder.() -> Unit = {},
@@ -53,9 +55,11 @@ class DefaultVoiceConnection(
         CoroutineScope(SupervisorJob() + CoroutineName("kord-voice-connection[${data.guildId.value}"))
 
     override val socket: VoiceUdpSocket = udpSocket ?: GlobalVoiceUdpSocket
-    override val voiceGateway: VoiceGateway
-    override val framePoller: AudioFramePoller
-    override val streams: Streams
+    override val voiceGateway: VoiceGateway = DefaultVoiceGatewayBuilder(data.selfId, data.guildId, data.sessionId)
+        .apply(voiceGatewayBuilder)
+        .build()
+    override val framePoller: AudioFramePoller = framePollerFactory.create(context)
+    override val streams: Streams = streamsFactory.create(context)
 
     override var voiceServer: NetworkAddress? by atomic(null)
         internal set
@@ -65,14 +69,7 @@ class DefaultVoiceConnection(
     val context: VoiceContext
         get() = VoiceContext(socket, voiceGateway, this)
 
-
     init {
-        voiceGateway = DefaultVoiceGatewayBuilder(data.selfId, data.guildId, data.sessionId)
-            .apply(voiceGatewayBuilder)
-            .build()
-        framePoller = framePollerFactory.create(context)
-        streams = streamsFactory.create(context)
-
         with(scope) {
             launch { VoiceUpdateEventHandler(gatewayBridge.events, this@DefaultVoiceConnection).start() }
             launch { StreamsHandler(voiceGateway.events, streams).start() }

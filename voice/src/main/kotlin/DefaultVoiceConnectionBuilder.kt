@@ -6,6 +6,8 @@ import dev.kord.common.annotation.KordVoice
 import dev.kord.common.entity.DiscordVoiceServerUpdateData
 import dev.kord.common.entity.DiscordVoiceState
 import dev.kord.common.entity.Snowflake
+import dev.kord.voice.encryption.strategies.LiteNonceStrategy
+import dev.kord.voice.encryption.strategies.NonceStrategy
 import dev.kord.voice.exception.VoiceConnectionInitializationException
 import dev.kord.voice.gateway.DefaultVoiceGatewayBuilder
 import dev.kord.voice.gateway.VoiceGateway
@@ -16,6 +18,7 @@ import dev.kord.voice.streams.Streams
 import dev.kord.voice.streams.StreamsFactory
 import dev.kord.voice.udp.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
@@ -31,6 +34,12 @@ class DefaultVoiceConnectionBuilder(
      * The amount in milliseconds to wait for the events required to create a [DefaultVoiceConnection]. Default is 5000, or 5 seconds.
      */
     var timeout: Long = 5000
+
+    /**
+     * The nonce strategy to be used for the encryption of audio packets.
+     * If `null`, [dev.kord.voice.encryption.strategies.LiteNonceStrategy] will be used.
+    */
+    var nonceStrategy: NonceStrategy? = null
 
     /**
      * The [AudioProvider] for this [DefaultVoiceConnection]. No audio will be provided when one is not set.
@@ -57,10 +66,10 @@ class DefaultVoiceConnectionBuilder(
      * When one is not set, a factory will be used to create the default interceptor, see [DefaultFrameInterceptor].
      * This factory will be used to create a new [FrameInterceptor] whenever audio is ready to be sent.
      */
-    var frameInterceptorFactory: ((FrameInterceptorContext) -> FrameInterceptor)? = null
+    var frameInterceptor: FrameInterceptor? = null
 
-    fun frameInterceptor(factory: (FrameInterceptorContext) -> FrameInterceptor) {
-        this.frameInterceptorFactory = factory
+    fun frameInterceptor(interceptor: Flow<AudioFrame?>.(FrameInterceptorConfiguration) -> Flow<AudioFrame?>) {
+        frameInterceptor = FrameInterceptor(interceptor)
     }
 
     /**
@@ -140,20 +149,16 @@ class DefaultVoiceConnectionBuilder(
      */
     suspend fun build(): DefaultVoiceConnection {
         val (voiceConnectionData, initialGatewayConfiguration) = updateVoiceState()
-
-        val audioProvider = audioProvider ?: EmptyAudioPlayerProvider
-        val frameInterceptorFactory = frameInterceptorFactory ?: { DefaultFrameInterceptor(it) }
-        val streamsFactory = StreamsFactory { streams ?: if (receiveVoice) DefaultStreams(it) else NOPStreams }
-
         val connection = DefaultVoiceConnection(
-            voiceConnectionData,
-            audioProvider,
-            frameInterceptorFactory,
-            gateway,
-            streamsFactory,
-            udpSocket,
-            voiceGatewayBuilder ?: {},
-            framePollerFactory
+            data = voiceConnectionData,
+            audioProvider = audioProvider ?: EmptyAudioPlayerProvider,
+            frameInterceptor = frameInterceptor ?: DefaultFrameInterceptor(),
+            gatewayBridge = gateway,
+            streamsFactory = { streams ?: if (receiveVoice) DefaultStreams(it) else NOPStreams },
+            udpSocket = udpSocket,
+            voiceGatewayBuilder = voiceGatewayBuilder ?: {},
+            framePollerFactory = framePollerFactory,
+            nonceStrategy = nonceStrategy ?: LiteNonceStrategy()
         )
 
         connection.voiceGatewayConfiguration = initialGatewayConfiguration

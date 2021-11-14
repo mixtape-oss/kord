@@ -4,6 +4,7 @@ package dev.kord.voice
 
 import dev.kord.common.annotation.KordVoice
 import dev.kord.common.entity.Snowflake
+import dev.kord.voice.encryption.strategies.NonceStrategy
 import dev.kord.voice.gateway.VoiceGateway
 import dev.kord.voice.gateway.VoiceGatewayConfiguration
 import dev.kord.voice.streams.Streams
@@ -32,6 +33,16 @@ data class VoiceConnectionData(
 @KordVoice
 interface VoiceConnection {
     val data: VoiceConnectionData
+
+    /**
+     * The [NonceStrategy] that is used during encryption of audio.
+     */
+    val nonceStrategy: NonceStrategy
+
+    /**
+     * The gateway bridge for this connection.
+     */
+    val gatewayBridge: GatewayBridge
 
     /**
      * The voice server we're connected to, or null if we're not connected to one.
@@ -64,9 +75,9 @@ interface VoiceConnection {
     val framePoller: AudioFramePoller
 
     /**
-     * A factory for [FrameInterceptor]s that's used whenever audio is ready to be sent. See [FrameInterceptor] and [DefaultFrameInterceptor].
+     * A [FrameInterceptor] that will intercept all outgoing [AudioFrame]s.
      */
-    val frameInterceptorFactory: (FrameInterceptorContext) -> FrameInterceptor
+    val frameInterceptor: FrameInterceptor
 
     /**
      * Connects to the gateway and begins the process of an audio-ready voice session.

@@ -36,7 +36,7 @@ suspend fun main(args: Array<String>) {
             val player = players.createPlayer()
             val track = suspendCoroutine<AudioTrack?> { coro ->
                 players.loadItemOrdered(
-                    player, "ytsearch:leave me august ii", FunctionalResultHandler(
+                    player, "ytsearch:panic lord\$ofdogtown", FunctionalResultHandler(
                         { coro.resume(it) },
                         { coro.resume(it.tracks.first()) },
                         { coro.resume(null) },

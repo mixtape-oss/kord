@@ -4,6 +4,7 @@ package dev.kord.voice.udp
 
 import dev.kord.common.annotation.KordVoice
 import dev.kord.voice.*
+import dev.kord.voice.encryption.strategies.NonceStrategy
 import io.ktor.util.network.*
 
 @KordVoice
@@ -12,8 +13,9 @@ data class AudioFramePollerConfiguration(
     val ssrc: UInt,
     val key: ByteArray,
     val provider: AudioProvider,
-    val baseFrameInterceptorContext: FrameInterceptorContextBuilder,
-    val interceptorFactory: (FrameInterceptorContext) -> FrameInterceptor
+    val interceptorConfiguration: FrameInterceptorConfiguration,
+    val nonceStrategy: NonceStrategy,
+    val interceptor: FrameInterceptor,
 )
 
 @KordVoice

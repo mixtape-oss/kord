@@ -3,9 +3,12 @@
 package dev.kord.voice.handlers
 
 import dev.kord.common.annotation.KordVoice
-import dev.kord.voice.DefaultVoiceConnection
 import dev.kord.voice.EncryptionMode
-import dev.kord.voice.FrameInterceptorContextBuilder
+import dev.kord.voice.FrameInterceptorConfiguration
+import dev.kord.voice.VoiceConnection
+import dev.kord.voice.encryption.strategies.LiteNonceStrategy
+import dev.kord.voice.encryption.strategies.NormalNonceStrategy
+import dev.kord.voice.encryption.strategies.SuffixNonceStrategy
 import dev.kord.voice.gateway.*
 import dev.kord.voice.udp.AudioFramePollerConfiguration
 import io.ktor.util.network.*
@@ -21,26 +24,35 @@ private val udpLifeCycleLogger = KotlinLogging.logger { }
 @OptIn(KordVoice::class)
 internal class UdpLifeCycleHandler(
     flow: Flow<VoiceEvent>,
-    private val connection: DefaultVoiceConnection
+    private val connection: VoiceConnection
 ) : ConnectionEventHandler<VoiceEvent>(flow, "UdpInterceptor") {
     private var ssrc: UInt? by atomic(null)
+    private var server: NetworkAddress? by atomic(null)
+
     private var audioSenderJob: Job? by atomic(null)
 
     @OptIn(ExperimentalUnsignedTypes::class)
     override suspend fun start() = coroutineScope {
         on<Ready> {
             ssrc = it.ssrc
-            connection.voiceServer = NetworkAddress(it.ip, it.port)
+            server = NetworkAddress(it.ip, it.port)
 
-            val ip: NetworkAddress = connection.socket.discoverIp(connection.voiceServer!!, ssrc!!.toInt())
+            val ip: NetworkAddress = connection.socket.discoverIp(server!!, ssrc!!.toInt())
+
             udpLifeCycleLogger.trace { "ip discovered for voice successfully" }
+
+            val encryptionMode = when (connection.nonceStrategy) {
+                is LiteNonceStrategy -> EncryptionMode.XSalsa20Poly1305Lite
+                is NormalNonceStrategy -> EncryptionMode.XSalsa20Poly1305
+                is SuffixNonceStrategy -> EncryptionMode.XSalsa20Poly1305Suffix
+            }
 
             val selectProtocol = SelectProtocol(
                 protocol = "udp",
                 data = SelectProtocol.Data(
                     address = ip.hostname,
                     port = ip.port,
-                    mode = EncryptionMode.XSalsa20Poly1305Lite
+                    mode = encryptionMode
                 )
             )
 
@@ -52,10 +64,11 @@ internal class UdpLifeCycleHandler(
                 val config = AudioFramePollerConfiguration(
                     ssrc = ssrc!!,
                     key = it.secretKey.toUByteArray().toByteArray(),
-                    provider = audioProvider,
-                    baseFrameInterceptorContext = FrameInterceptorContextBuilder(voiceGateway),
-                    interceptorFactory = frameInterceptorFactory,
-                    server = connection.voiceServer!!
+                    server = server!!,
+                    interceptorConfiguration = FrameInterceptorConfiguration(gatewayBridge, voiceGateway, ssrc!!),
+                    interceptor = connection.frameInterceptor,
+                    nonceStrategy = connection.nonceStrategy,
+                    provider = connection.audioProvider
                 )
 
                 audioSenderJob?.cancel()
